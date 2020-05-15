@@ -58,6 +58,18 @@
 
 #endif
 
+#if 0
+// TODO: uncomment this once we finish the remaining blur funcs
+#if defined(__aarch64__) && CONFIG_ASM
+
+#define ALIGN           4
+#define DECORATE(func)  ass_##func##_neon
+#include "ass_func_template.h"
+#undef ALIGN
+#undef DECORATE
+
+#endif
+#endif
 
 void ass_synth_blur(const BitmapEngine *engine, Bitmap *bm,
                     int be, double blur_r2)

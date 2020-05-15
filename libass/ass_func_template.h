@@ -89,6 +89,14 @@ void DECORATE(blur1246_vert)(int16_t *dst, const int16_t *src,
                              const int16_t *param);
 
 
+// TODO: remove this once we finish the remaining blur funcs
+#if defined(__aarch64__) && CONFIG_ASM
+void ass_stripe_unpack_neon(int16_t *dst, const uint8_t *src, ptrdiff_t src_stride,
+                            uintptr_t width, uintptr_t height);
+void ass_stripe_pack_neon(uint8_t *dst, ptrdiff_t dst_stride, const int16_t *src,
+                          uintptr_t width, uintptr_t height);
+#endif
+
 const BitmapEngine DECORATE(bitmap_engine) = {
     .align_order = ALIGN,
 
@@ -119,8 +127,14 @@ const BitmapEngine DECORATE(bitmap_engine) = {
     .be_blur = ass_be_blur_c,
 #endif
 
+// TODO: remove this once we finish the remaining blur funcs
+#if defined(__aarch64__) && CONFIG_ASM
+    .stripe_unpack = ass_stripe_unpack_neon,
+    .stripe_pack = ass_stripe_pack_neon,
+#else
     .stripe_unpack = DECORATE(stripe_unpack),
     .stripe_pack = DECORATE(stripe_pack),
+#endif
     .shrink_horz = DECORATE(shrink_horz),
     .shrink_vert = DECORATE(shrink_vert),
     .expand_horz = DECORATE(expand_horz),

@@ -77,6 +77,9 @@ AS_IF([test x$enable_asm != xno], [
             BITS=64
             BITTYPE=64
             ASFLAGS="$ASFLAGS -DARCH_X86_64=1 -DPIC" ],
+        [aarch64-*], [
+            AARCH64=true
+            CCASFLAGS="$ASFLAGS -DPRIVATE_PREFIX=ass_ -DPIC" ],
         )
     AS_IF([test x$INTEL = xtrue], [
         AC_CHECK_PROG([nasm_check], [$AS], [yes])
@@ -122,6 +125,7 @@ AM_CONDITIONAL([ASM], [test x$enable_asm != xno])
 AM_CONDITIONAL([INTEL], [test x$INTEL = xtrue])
 AM_CONDITIONAL([X86], [test x$X86 = xtrue])
 AM_CONDITIONAL([X64], [test x$X64 = xtrue])
+AM_CONDITIONAL([AARCH64], [test x$AARCH64 = xtrue])
 
 AM_COND_IF([ASM],
     [AC_DEFINE(CONFIG_ASM, 1, [ASM enabled])],

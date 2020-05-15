@@ -17,6 +17,7 @@ nasm_verbose_0 = @echo "  NASM    " $@;
 SRC_INTEL = x86/rasterizer.asm x86/blend_bitmaps.asm x86/blur.asm x86/cpuid.asm \
             x86/cpuid.h
 SRC_INTEL64 = x86/be_blur.asm
+SRC_AARCH64 = aarch64/blur.S
 
 SRC_FONTCONFIG = ass_fontconfig.c ass_fontconfig.h
 SRC_DIRECTWRITE = ass_directwrite.c ass_directwrite.h dwrite_c.h
@@ -55,9 +56,12 @@ if X64
 libass_la_SOURCES += $(SRC_INTEL64)
 endif
 endif
+if AARCH64
+libass_la_SOURCES += $(SRC_AARCH64)
+endif
 endif
 
 assheadersdir = $(includedir)/ass
 dist_assheaders_HEADERS = ass.h ass_types.h
 
-EXTRA_DIST = libass.sym x86/x86inc.asm x86/utils.asm
+EXTRA_DIST = libass.sym x86/x86inc.asm x86/utils.asm aarch64/asm.S aarch64/util.S
