@@ -18,6 +18,12 @@
 
 #include "util.S"
 
+const shorts_zero, align=4
+    .rept 8
+    .short 0
+    .endr
+endconst
+
 const shorts_dither0, align=4
     .rept 4
     .short 8, 40
@@ -159,5 +165,132 @@ function stripe_pack_neon, export=1
     add         x0, x0, x1                  // dst += dst_stride
     cmp         x2, x6
     b.lo        3b                          // if (src < x6) goto odd_stripe
+    ret
+endfunc
+
+.macro load_line dst, base, max, zero_offs, offs, tmp
+    cmp     \offs, \max
+    csel    \tmp, \zero_offs, \offs, CS     // tmp = (offs >= max) : zero_offs ? offs
+    ldr     \dst, [\base, \tmp]             // dst = vld1q_u8(base + tmp)
+.endm
+
+/*
+ * void ass_shrink_vert_neon(int16_t *dst, const int16_t *src,
+ *                           uintptr_t src_width, uintptr_t src_height);
+ */
+function shrink_vert_neon, export=1
+    lsl         x2, x2, #1                  // src_width *= 2
+    add         x2, x2, (vector_size - 1)   // src_width += vector_size - 1
+    add         x5, x3, #5                  // x5 = src_height + 5
+    and         x2, x2, ~(vector_size - 1)  // src_width &= ~(vector_size - 1)
+    lsr         x5, x5, #1                  // x5 >>= 1
+    mul         x2, x2, x5                  // src_width *= x5
+    lsl         x3, x3, #4                  // src_height *= vector_size
+    add         x2, x2, x0                  // src_width += dst
+    movi        v7.8h, #1                   // v7 = {1u16} * 8
+    movi        v16.8h, #0x80, lsl #8       // v16 = {0x8000u16} * 8
+    movrel      x6, shorts_zero             // x6 = &shorts_zero
+    sub         x6, x6, x1                  // x6 -= src
+
+1:                                          // col_loop
+    mov         x4, (-4 * vector_size)      // x4 = -4 * vector_size
+    movi        v0.16b, #0                  // v0 = {0u8} * 16
+    movi        v1.16b, #0                  // v1 = {0u8} * 16
+    movi        v2.16b, #0                  // v2 = {0u8} * 16
+    movi        v3.16b, #0                  // v3 = {0u8} * 16
+
+2:                                          // row_loop
+    add         x8, x4, (4 * vector_size)   // x8 = x4 + (4 * vector_size)
+    load_line   q4, x1, x3, x6, x8, x5
+    add         x8, x4, (5 * vector_size)   // x8 = x4 + (5 * vector_size)
+    load_line   q5, x1, x3, x6, x8, x5
+    mov         v6.16b, v16.16b             // v6 = v16
+    add         v1.8h, v1.8h, v4.8h         // v1 = vaddq_u16(v1, v4)
+    add         v4.8h, v4.8h, v5.8h         // v4 = vaddq_u16(v4, v5)
+    and         v6.16b, v6.16b, v0.16b      // v6 = vandq_u8(v6, v0)
+    and         v6.16b, v6.16b, v4.16b      // v6 = vandq_u8(v6, v4)
+    add         v0.8h, v0.8h, v4.8h         // v0 = vaddq_u16(v0, v4)
+    ushr        v0.8h, v0.8h, #1            // v0 = vshrq_n_u16(v0, 1)
+    orr         v0.16b, v0.16b, v6.16b      // v0 = vorrq_u8(v0, v6)
+    and         v6.16b, v6.16b, v2.16b      // v6 = vandq_u8(v6, v2)
+    add         v0.8h, v0.8h, v2.8h         // v0 = vaddq_u16(v0, v2)
+    ushr        v0.8h, v0.8h, #1            // v0 = vshrq_n_u16(v0, 1)
+    orr         v0.16b, v0.16b, v6.16b      // v0 = vorrq_u8(v0, v6)
+    and         v6.16b, v6.16b, v1.16b      // v6 = vandq_u8(v6, v1)
+    add         v0.8h, v0.8h, v1.8h         // v0 = vaddq_u16(v0, v1)
+    ushr        v0.8h, v0.8h, #1            // v0 = vshrq_n_u16(v0, 1)
+    orr         v0.16b, v0.16b, v6.16b      // v0 = vorrq_u8(v0, v6)
+    add         v0.8h, v0.8h, v2.8h         // v0 = vaddq_u16(v0, v2)
+    ushr        v0.8h, v0.8h, #1            // v0 = vshrq_n_u16(v0, 1)
+    orr         v0.16b, v0.16b, v6.16b      // v0 = vorrq_u8(v0, v6)
+    add         v0.8h, v0.8h, v7.8h         // v0 = vaddq_u16(v0, v7)
+    ushr        v0.8h, v0.8h, #1            // v0 = vshrq_n_u16(v0, 1)
+    str         q0, [x0]                    // vst1q_u16(dst, v0)
+    add         x4, x4, (2 * vector_size)   // x4 += 2 * vector_size
+    add         x0, x0, vector_size         // dst += vector_size
+    mov         v0.16b, v2.16b              // v0 = v2
+    mov         v1.16b, v3.16b              // v1 = v3
+    mov         v2.16b, v4.16b              // v2 = v4
+    mov         v3.16b, v5.16b              // v3 = v5
+    cmp         x4, x3
+    b.lt        2b                          // if (x4 < src_height) goto row_loop
+    add         x1, x1, x3                  // src += src_height
+    sub         x6, x6, x3                  // x6 -= src_height
+    cmp         x0, x2
+    b.lo        1b                          // if (dst < src_width) goto col_loop
+    ret
+endfunc
+
+/*
+ * void ass_expand_vert_neon(int16_t *dst, const int16_t *src,
+ *                           uintptr_t src_width, uintptr_t src_height);
+ */
+function expand_vert_neon, export=1
+    lsl         x2, x2, #1                  // src_width *= 2
+    lsl         x5, x3, #1                  // x5 = x3 * 2
+    add         x2, x2, (vector_size - 1)   // src_width += vector_size - 1
+    add         x5, x5, #4                  // x5 += 4
+    and         x2, x2, ~(vector_size - 1)  // src_width &= ~(vector_size - 1)
+    mul         x2, x2, x5                  // src_width *= x5
+    lsl         x3, x3, #4                  // src_height *= vector_size
+    add         x2, x2, x0                  // src_width += dst
+    movi        v4.8h, #1                   // v4 = {1u16} * 8
+    movrel      x6, shorts_zero             // x6 = &shorts_zero
+    sub         x6, x6, x1                  // x6 -= src
+
+1:                                          // col_loop
+    mov         x4, (-2 * vector_size)      // x4 = -2 * vector_size
+    movi        v0.16b, #0                  // v0 = {0u8} * 16
+    movi        v1.16b, #0                  // v1 = {0u8} * 16
+
+2:                                          // row_loop
+    add         x7, x4, (2 * vector_size)   // x7 = x4 + (2 * vector_size)
+    load_line   q2, x1, x3, x6, x7, x5
+    add         v3.8h, v0.8h, v2.8h         // v3 = vaddq_u16(v0, v2)
+    ushr        v3.8h, v3.8h, #1            // v3 = vshrq_n_u16(v3, 1)
+    add         v3.8h, v3.8h, v1.8h         // v3 = vaddq_u16(v3, v1)
+    ushr        v3.8h, v3.8h, #1            // v3 = vshrq_n_u16(v3, 1)
+    add         v0.8h, v0.8h, v3.8h         // v0 = vaddq_u16(v0, v3)
+    add         v3.8h, v3.8h, v2.8h         // v3 = vaddq_u16(v3, v2)
+    ushr        v0.8h, v0.8h, #1            // v0 = vshrq_n_u16(v0, 1)
+    ushr        v3.8h, v3.8h, #1            // v3 = vshrq_n_u16(v3, 1)
+    add         v0.8h, v0.8h, v1.8h         // v0 = vaddq_u16(v0, v1)
+    add         v3.8h, v3.8h, v1.8h         // v3 = vaddq_u16(v3, v1)
+    add         v0.8h, v0.8h, v4.8h         // v0 = vaddq_u16(v0, v4)
+    add         v3.8h, v3.8h, v4.8h         // v3 = vaddq_u16(v3, v4)
+    ushr        v0.8h, v0.8h, #1            // v0 = vshrq_n_u16(v0, 1)
+    ushr        v3.8h, v3.8h, #1            // v3 = vshrq_n_u16(v3, 1)
+    str         q0, [x0]                    // vst1q_u16(dst, v0)
+    str         q3, [x0, vector_size]       // vst1q_u16(dst + vector_size, v3)
+    add         x4, x4, vector_size         // x4 += vector_size
+    add         x0, x0, (2 * vector_size)   // dst += 2 * vector_size
+    mov         v0.16b, v1.16b              // v0 = v1
+    mov         v1.16b, v2.16b              // v1 = v2
+    cmp         x4, x3
+    b.lt        2b                          // if (x4 < src_height) goto row_loop
+    add         x1, x1, x3                  // src += src_height
+    sub         x6, x6, x3                  // x6 -= src_height
+    cmp         x0, x2
+    b.lo        1b                          // if (dst < x2) goto col_loop
     ret
 endfunc

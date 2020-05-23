@@ -95,6 +95,10 @@ void ass_stripe_unpack_neon(int16_t *dst, const uint8_t *src, ptrdiff_t src_stri
                             uintptr_t width, uintptr_t height);
 void ass_stripe_pack_neon(uint8_t *dst, ptrdiff_t dst_stride, const int16_t *src,
                           uintptr_t width, uintptr_t height);
+void ass_shrink_vert_neon(int16_t *dst, const int16_t *src,
+                          uintptr_t src_width, uintptr_t src_height);
+void ass_expand_vert_neon(int16_t *dst, const int16_t *src,
+                          uintptr_t src_width, uintptr_t src_height);
 #endif
 
 const BitmapEngine DECORATE(bitmap_engine) = {
@@ -131,14 +135,16 @@ const BitmapEngine DECORATE(bitmap_engine) = {
 #if defined(__aarch64__) && CONFIG_ASM
     .stripe_unpack = ass_stripe_unpack_neon,
     .stripe_pack = ass_stripe_pack_neon,
+    .shrink_vert = ass_shrink_vert_neon,
+    .expand_vert = ass_expand_vert_neon,
 #else
     .stripe_unpack = DECORATE(stripe_unpack),
     .stripe_pack = DECORATE(stripe_pack),
+    .shrink_vert = DECORATE(shrink_vert),
+    .expand_vert = DECORATE(expand_vert),
 #endif
     .shrink_horz = DECORATE(shrink_horz),
-    .shrink_vert = DECORATE(shrink_vert),
     .expand_horz = DECORATE(expand_horz),
-    .expand_vert = DECORATE(expand_vert),
     .pre_blur_horz = { DECORATE(pre_blur1_horz), DECORATE(pre_blur2_horz), DECORATE(pre_blur3_horz) },
     .pre_blur_vert = { DECORATE(pre_blur1_vert), DECORATE(pre_blur2_vert), DECORATE(pre_blur3_vert) },
     .main_blur_horz = { DECORATE(blur1234_horz), DECORATE(blur1235_horz), DECORATE(blur1246_horz) },
